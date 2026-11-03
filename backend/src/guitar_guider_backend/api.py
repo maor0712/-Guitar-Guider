@@ -1,7 +1,7 @@
 """HTTP API (and, when built, the frontend) served by FastAPI."""
 
-import base64
 import hashlib
+import hmac
 import os
 import secrets
 from contextlib import asynccontextmanager
@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -28,23 +28,66 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Guitar Guider", lifespan=lifespan)
 
-# When deployed publicly, set GG_PASSWORD to require a password (any username).
+# When deployed publicly, set GG_PASSWORD to require a password.
+# Logging in sets a long-lived cookie, so the phone only asks once.
 PASSWORD = os.environ.get("GG_PASSWORD")
+AUTH_COOKIE = "gg_auth"
+AUTH_MAX_AGE = 60 * 60 * 24 * 365
+
+
+def _auth_token() -> str:
+    return hmac.new(PASSWORD.encode(), b"guitar-guider-session", hashlib.sha256).hexdigest()
+
+
+LOGIN_PAGE = """<!doctype html>
+<html lang="he" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guitar Guider</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #14110f;
+         color: #f4ede6; font-family: system-ui, sans-serif; }
+  form { width: min(320px, calc(100% - 32px)); display: grid; gap: 12px; text-align: center; }
+  input, button { font: inherit; padding: 14px; border-radius: 12px; }
+  input { border: 1px solid #3a312b; background: #1f1a17; color: inherit; text-align: center; }
+  button { border: 0; background: #f59e0b; color: #14110f; font-weight: 700; }
+  .error { color: #f87171; min-height: 1.2em; margin: 0; }
+</style></head>
+<body><form id="f">
+  <h1>🎸 Guitar Guider</h1>
+  <input id="p" type="password" placeholder="סיסמה" autocomplete="current-password" autofocus required>
+  <button>כניסה</button>
+  <p class="error" id="e"></p>
+</form>
+<script>
+  document.getElementById('f').onsubmit = async (ev) => {
+    ev.preventDefault();
+    const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: document.getElementById('p').value }) });
+    if (res.ok) location.reload();
+    else document.getElementById('e').textContent = 'סיסמה שגויה';
+  };
+</script></body></html>"""
+
+
+class LoginRequest(BaseModel):
+    password: str
+
+
+@app.post("/api/login")
+def login(req: LoginRequest, response: Response):
+    if not PASSWORD or not secrets.compare_digest(req.password, PASSWORD):
+        raise HTTPException(401, "סיסמה שגויה")
+    response.set_cookie(AUTH_COOKIE, _auth_token(), max_age=AUTH_MAX_AGE, httponly=True, samesite="lax")
+    return {"ok": True}
 
 
 @app.middleware("http")
 async def require_password(request: Request, call_next):
-    if PASSWORD:
-        ok = False
-        header = request.headers.get("authorization", "")
-        if header.startswith("Basic "):
-            try:
-                _, _, given = base64.b64decode(header[6:]).decode().partition(":")
-                ok = secrets.compare_digest(given, PASSWORD)
-            except ValueError:
-                pass
-        if not ok:
-            return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="Guitar Guider"'})
+    if PASSWORD and request.url.path != "/api/login":
+        if not secrets.compare_digest(request.cookies.get(AUTH_COOKIE, ""), _auth_token()):
+            if request.url.path.startswith("/api/"):
+                return JSONResponse({"detail": "צריך להתחבר"}, status_code=401)
+            return HTMLResponse(LOGIN_PAGE)
     return await call_next(request)
 
 
