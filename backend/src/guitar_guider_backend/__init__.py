@@ -9,6 +9,7 @@ def main() -> None:
     uvicorn.run(
         "guitar_guider_backend.api:app",
         host=os.environ.get("GG_HOST", "127.0.0.1"),
-        port=int(os.environ.get("GG_PORT", "8000")),
+        # Hosting platforms (Railway, Render, ...) pass the port in $PORT.
+        port=int(os.environ.get("PORT") or os.environ.get("GG_PORT", "8000")),
         reload=os.environ.get("GG_RELOAD") == "1",
     )

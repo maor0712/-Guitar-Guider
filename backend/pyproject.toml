@@ -19,6 +19,15 @@ dependencies = [
 [project.scripts]
 guitar-guider-backend = "guitar_guider_backend:main"
 
+# CPU-only PyTorch: the default Linux wheels pull in ~3GB of CUDA libraries.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
 [build-system]
 requires = ["uv_build>=0.13.7,<0.14.0"]
 build-backend = "uv_build"

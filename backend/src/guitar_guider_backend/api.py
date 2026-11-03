@@ -1,12 +1,15 @@
 """HTTP API (and, when built, the frontend) served by FastAPI."""
 
+import base64
 import hashlib
+import os
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -24,6 +27,25 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Guitar Guider", lifespan=lifespan)
+
+# When deployed publicly, set GG_PASSWORD to require a password (any username).
+PASSWORD = os.environ.get("GG_PASSWORD")
+
+
+@app.middleware("http")
+async def require_password(request: Request, call_next):
+    if PASSWORD:
+        ok = False
+        header = request.headers.get("authorization", "")
+        if header.startswith("Basic "):
+            try:
+                _, _, given = base64.b64decode(header[6:]).decode().partition(":")
+                ok = secrets.compare_digest(given, PASSWORD)
+            except ValueError:
+                pass
+        if not ok:
+            return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="Guitar Guider"'})
+    return await call_next(request)
 
 
 class YoutubeRequest(BaseModel):
