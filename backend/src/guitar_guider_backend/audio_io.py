@@ -1,5 +1,6 @@
 """Getting audio in: YouTube download via yt-dlp and ffmpeg conversion."""
 
+import logging
 import re
 import shutil
 import subprocess
@@ -10,6 +11,7 @@ import yt_dlp
 from .storage import DATA_DIR
 
 YOUTUBE_COOKIES = DATA_DIR / "youtube_cookies.txt"
+log = logging.getLogger(__name__)
 
 YOUTUBE_ID_RE = re.compile(r"(?:v=|youtu\.be/|shorts/|embed/|live/)([A-Za-z0-9_-]{11})")
 
@@ -60,11 +62,16 @@ def download_youtube(video_id: str, folder: Path) -> dict:
             info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
             source = Path(ydl.prepare_filename(info))
     except yt_dlp.utils.DownloadError as exc:
-        if any(hint in str(exc).lower() for hint in BLOCKED_HINTS):
-            what = "קובץ ה-cookies כבר לא תקף, צריך להעלות חדש" if YOUTUBE_COOKIES.exists() \
+        reason = re.sub(r"\x1b\[[0-9;]*m", "", str(exc)).removeprefix("ERROR: ").strip()
+        log.warning("yt-dlp failed for %s (cookies=%s): %s", video_id, YOUTUBE_COOKIES.exists(), reason)
+        if any(hint in reason.lower() for hint in BLOCKED_HINTS):
+            what = "גם עם קובץ ה-cookies" if YOUTUBE_COOKIES.exists() \
                 else "צריך להעלות קובץ cookies של יוטיוב (במסך הבית)"
-            raise YoutubeBlocked(f"יוטיוב חסם את ההורדה מהשרת: {what}. בינתיים אפשר להעלות קובץ שמע.") from exc
-        raise
+            raise YoutubeBlocked(
+                f"יוטיוב חסם את ההורדה מהשרת ({what}). בינתיים אפשר להעלות קובץ שמע. "
+                f"פרטים: {reason[:300]}"
+            ) from exc
+        raise RuntimeError(f"ההורדה מיוטיוב נכשלה: {reason[:300]}") from exc
     return {
         "title": info.get("title") or video_id,
         "artist": info.get("artist") or info.get("uploader"),
