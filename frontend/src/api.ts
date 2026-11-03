@@ -91,7 +91,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
+export interface Settings {
+  youtube_cookies: boolean
+}
+
 export const api = {
+  getSettings: () => request<Settings>('/api/settings'),
+  uploadCookies: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return request<Settings>('/api/settings/youtube-cookies', { method: 'POST', body: form })
+  },
+  deleteCookies: () => request<Settings>('/api/settings/youtube-cookies', { method: 'DELETE' }),
   listSongs: () => request<SongMeta[]>('/api/songs'),
   getSong: (id: string) => request<SongDetail>(`/api/songs/${id}`),
   addYoutube: (url: string) =>

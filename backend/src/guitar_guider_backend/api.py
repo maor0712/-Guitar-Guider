@@ -102,6 +102,26 @@ def _require(song_id: str) -> dict:
     return meta
 
 
+@app.get("/api/settings")
+def get_settings():
+    return {"youtube_cookies": audio_io.YOUTUBE_COOKIES.exists()}
+
+
+@app.post("/api/settings/youtube-cookies")
+async def upload_cookies(file: UploadFile):
+    text = (await file.read()).decode("utf-8", errors="replace")
+    if "youtube.com" not in text or "\t" not in text:
+        raise HTTPException(400, "זה לא נראה כמו קובץ cookies.txt של יוטיוב (פורמט Netscape)")
+    audio_io.YOUTUBE_COOKIES.write_text(text, encoding="utf-8")
+    return {"youtube_cookies": True}
+
+
+@app.delete("/api/settings/youtube-cookies")
+def delete_cookies():
+    audio_io.YOUTUBE_COOKIES.unlink(missing_ok=True)
+    return {"youtube_cookies": False}
+
+
 @app.get("/api/songs")
 def list_songs():
     return storage.list_songs()

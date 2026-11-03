@@ -7,6 +7,10 @@ from pathlib import Path
 
 import yt_dlp
 
+from .storage import DATA_DIR
+
+YOUTUBE_COOKIES = DATA_DIR / "youtube_cookies.txt"
+
 YOUTUBE_ID_RE = re.compile(r"(?:v=|youtu\.be/|shorts/|embed/|live/)([A-Za-z0-9_-]{11})")
 
 PLAYBACK_FILE = "audio.mp3"
@@ -30,6 +34,13 @@ def ffmpeg_path() -> str:
     return path
 
 
+class YoutubeBlocked(RuntimeError):
+    pass
+
+
+BLOCKED_HINTS = ("sign in to confirm", "not a bot", "cookies", "http error 429")
+
+
 def download_youtube(video_id: str, folder: Path) -> dict:
     """Download best audio for a YouTube video into folder. Returns basic metadata."""
     folder.mkdir(parents=True, exist_ok=True)
@@ -41,9 +52,19 @@ def download_youtube(video_id: str, folder: Path) -> dict:
         "no_warnings": True,
         "js_runtimes": {"deno": {}, "node": {}},
     }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
-        source = Path(ydl.prepare_filename(info))
+    # Servers in the cloud are often blocked by YouTube unless they send a signed-in user's cookies.
+    if YOUTUBE_COOKIES.exists():
+        opts["cookiefile"] = str(YOUTUBE_COOKIES)
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
+            source = Path(ydl.prepare_filename(info))
+    except yt_dlp.utils.DownloadError as exc:
+        if any(hint in str(exc).lower() for hint in BLOCKED_HINTS):
+            what = "קובץ ה-cookies כבר לא תקף, צריך להעלות חדש" if YOUTUBE_COOKIES.exists() \
+                else "צריך להעלות קובץ cookies של יוטיוב (במסך הבית)"
+            raise YoutubeBlocked(f"יוטיוב חסם את ההורדה מהשרת: {what}. בינתיים אפשר להעלות קובץ שמע.") from exc
+        raise
     return {
         "title": info.get("title") or video_id,
         "artist": info.get("artist") or info.get("uploader"),

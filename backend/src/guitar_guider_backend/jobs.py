@@ -48,6 +48,7 @@ def submit_reanalyze(song_id: str) -> None:
 
 def _run(song_id: str, video_id: str | None) -> None:
     folder = storage.song_dir(song_id)
+    video_id = video_id or (storage.read_meta(song_id) or {}).get("video_id")
     try:
         if video_id and not (folder / audio_io.PLAYBACK_FILE).exists():
             _set_stage(song_id, "downloading", 2)

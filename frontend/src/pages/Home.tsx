@@ -75,6 +75,9 @@ export function Home() {
         {error && <p className="mt-3 text-sm text-bad">{error}</p>}
       </form>
 
+      <YoutubeCookies />
+
+
       <h2 className="mb-3 mt-10 text-lg font-bold">השירים שלי</h2>
       {songs.length === 0 && <p className="text-muted">עוד אין שירים. הדבק קישור כדי להתחיל.</p>}
       <ul className="space-y-3">
@@ -85,6 +88,56 @@ export function Home() {
         ))}
       </ul>
     </div>
+  )
+}
+
+/** Lets a cloud-hosted server download from YouTube with a signed-in user's cookies. */
+function YoutubeCookies() {
+  const [enabled, setEnabled] = useState<boolean | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const input = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { api.getSettings().then((s) => setEnabled(s.youtube_cookies)).catch(() => {}) }, [])
+
+  const upload = async (file: File) => {
+    setMessage(null)
+    try {
+      setEnabled((await api.uploadCookies(file)).youtube_cookies)
+      setMessage('נשמר. אפשר לנסות שוב קישור מיוטיוב.')
+    } catch (e) {
+      setMessage((e as Error).message)
+    }
+  }
+
+  return (
+    <details className="mt-3 rounded-2xl border border-line bg-surface px-4 py-3 text-sm">
+      <summary className="cursor-pointer text-muted">
+        יוטיוב חוסם הורדות? {enabled ? <span className="text-good">✓ cookies מוגדרים</span> : 'הגדרת cookies'}
+      </summary>
+      <div className="mt-3 space-y-2 text-muted">
+        <p>יוטיוב חוסם הורדות משרתים בענן. כדי לעקוף את זה, השרת צריך את ה-cookies של חשבון יוטיוב מחובר:</p>
+        <ol className="list-decimal space-y-1 ps-5">
+          <li>במחשב, ב-Chrome, התקן את התוסף <b className="text-ink">Get cookies.txt LOCALLY</b>.</li>
+          <li>פתח חלון גלישה בסתר, התחבר ליוטיוב (עדיף עם חשבון משני) ופתח את <span dir="ltr">youtube.com</span>.</li>
+          <li>לחץ על התוסף, בחר Export, וסגור את חלון הגלישה בסתר בלי להתנתק.</li>
+          <li>העלה כאן את הקובץ שירד.</li>
+        </ol>
+        <div className="flex flex-wrap gap-2 pt-1">
+          <button onClick={() => input.current?.click()} className="rounded-lg bg-accent px-3 py-1.5 font-bold text-bg">
+            העלאת cookies.txt
+          </button>
+          {enabled && (
+            <button onClick={() => void api.deleteCookies().then((s) => { setEnabled(s.youtube_cookies); setMessage('נמחק') })}
+              className="rounded-lg border border-line px-3 py-1.5">
+              מחיקה
+            </button>
+          )}
+        </div>
+        <input ref={input} type="file" accept=".txt,text/plain" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = '' }} />
+        {message && <p className="text-ink">{message}</p>}
+      </div>
+    </details>
   )
 }
 
@@ -116,7 +169,7 @@ function SongCard({ song, onDelete }: { song: SongMeta; onDelete: () => void }) 
               </div>
             </div>
           )}
-          {song.status === 'error' && <div className="mt-1 truncate text-xs text-bad">שגיאה: {song.error}</div>}
+          {song.status === 'error' && <div className="mt-1 text-xs text-bad">שגיאה: {song.error}</div>}
         </div>
       </button>
       <button onClick={onDelete} aria-label="מחיקה" className="rounded-lg p-2 text-muted hover:text-bad">✕</button>
