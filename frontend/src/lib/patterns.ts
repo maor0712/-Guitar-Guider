@@ -13,12 +13,16 @@ export interface Pattern {
   id: string
   kind: PatternKind
   level: Level
-  meter: 3 | 4
-  /** Steps per beat: 1 = quarters, 2 = eighths. */
-  subdiv: 1 | 2
+  meter: number
+  /** Steps per beat: 1 = quarters, 2 = eighths, 4 = sixteenths. */
+  subdiv: number
   steps: string[]
   name: string
   tip: string
+  /** Step indices played harder. Defaults to beat 1. */
+  accents?: number[]
+  /** For song-generated patterns: which part of the song it is for. */
+  variant?: 'all' | 'soft' | 'loud'
 }
 
 export const PATTERNS: Pattern[] = [
@@ -70,6 +74,8 @@ export function recommendPattern(kind: PatternKind, meter: number, bpm: number, 
 }
 
 export function countLabel(stepInBar: number, subdiv: number): string {
-  if (stepInBar % subdiv === 0) return String(stepInBar / subdiv + 1)
+  const k = stepInBar % subdiv
+  if (k === 0) return String(stepInBar / subdiv + 1)
+  if (subdiv === 4) return ['', 'e', '&', 'a'][k]
   return '&'
 }

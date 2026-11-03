@@ -3,13 +3,15 @@ import { api, type Analysis, type SongDetail } from '../api'
 import { BeatCounter } from '../components/BeatCounter'
 import { ChordDiagram } from '../components/ChordDiagram'
 import { ChordEditor } from '../components/ChordEditor'
+import { CoachPanel } from '../components/CoachPanel'
 import { PracticePanel } from '../components/PracticePanel'
 import { StrumLane } from '../components/StrumLane'
 import { sectionColor, Timeline } from '../components/Timeline'
+import { useCoach } from '../hooks/useCoach'
 import { usePlayer } from '../hooks/usePlayer'
 import { voicingFor } from '../lib/chords'
 import { buildHits } from '../lib/hits'
-import { type Level, type PatternKind, patternsFor, recommendPattern } from '../lib/patterns'
+import { type Level, type Pattern, type PatternKind, patternsFor, recommendPattern } from '../lib/patterns'
 import { ensureAudio } from '../lib/sound'
 import { formatTime, indexAt } from '../lib/timing'
 import { rankCapos, shapeFor } from '../lib/transform'
@@ -87,9 +89,12 @@ interface Prefs {
   level: Level
   patternId: string | null
   guide: boolean
+  waitMode: boolean
 }
 
-const DEFAULT_PREFS: Prefs = { capo: 0, simplify: true, kind: 'strum', level: 1, patternId: null, guide: false }
+const DEFAULT_PREFS: Prefs = { capo: 0, simplify: true, kind: 'strum', level: 1, patternId: null, guide: false, waitMode: false }
+const SONG_PATTERN = 'song'
+const VARIANT_TITLE = { soft: 'בחלקים השקטים', loud: 'בחלקים החזקים', all: undefined } as const
 
 /** Per-song practice settings, remembered in this browser. */
 function usePrefs(songId: string): [Prefs, (patch: Partial<Prefs>) => void] {
@@ -125,11 +130,27 @@ function Lesson({ songId, initial, onReanalyze }: { songId: string; initial: Ana
   const { capo, simplify } = prefs
   const shape = useCallback((label: string) => (label === 'N' ? 'N' : shapeFor(label, { capo, simplify })), [capo, simplify])
 
-  // Teacher: pattern choice
-  const patterns = patternsFor(prefs.kind, meter)
+  // Teacher: pattern choice. Song-fitted patterns (from the song's own rhythm) come first.
+  const library = patternsFor(prefs.kind, meter)
   const recommended = recommendPattern(prefs.kind, meter, analysis.bpm, prefs.level)
-  const pattern = patterns.find((p) => p.id === prefs.patternId) ?? recommended
-  const hits = useMemo(() => buildHits(analysis, pattern, { capo, simplify }), [analysis, pattern, capo, simplify])
+  const rhythm = analysis.rhythm
+  const songVariants = useMemo(() => {
+    const found = (rhythm?.patterns ?? []).filter((p) => p.kind === prefs.kind && p.level === prefs.level && p.meter === meter)
+    return found.map((p): Pattern => ({ ...p, name: 'מותאם לשיר' }))
+  }, [rhythm, prefs.kind, prefs.level, meter])
+  const useSong = songVariants.length > 0 && (prefs.patternId ?? SONG_PATTERN) === SONG_PATTERN
+  const libraryPattern = library.find((p) => p.id === prefs.patternId) ?? recommended
+  const selectedId = useSong ? SONG_PATTERN : libraryPattern.id
+
+  const patternAt = useCallback((bar: number): Pattern => {
+    if (!useSong) return libraryPattern
+    const variant = rhythm?.bar_variant[String(bar)] ?? (rhythm?.dynamic ? 'loud' : 'all')
+    return songVariants.find((p) => p.variant === variant) ?? songVariants[0]
+  }, [useSong, libraryPattern, rhythm, songVariants])
+  const relief = prefs.kind === 'strum' && prefs.level <= 2
+  const hits = useMemo(() => buildHits(analysis, patternAt, { capo, simplify }, relief),
+    [analysis, patternAt, capo, simplify, relief])
+  const coach = useCoach({ hits, chords, shape, player, waitMode: prefs.waitMode })
 
   // Teacher: capo suggestion, weighted by how long each chord is played
   const capoRanking = useMemo(() => {
@@ -153,6 +174,7 @@ function Lesson({ songId, initial, onReanalyze }: { songId: string; initial: Ana
   }, [chords, chordIdx, current?.label, shape])
   const beatsToNext = next ? indexAt(beats, next.start - 0.01, (b) => b.t) - beatIdx + 1 : null
 
+  const activePattern = patternAt(beat?.bar ?? 0)
   const currentSection = sections.find((s) => time >= s.start && time < s.end)
   const loopedSection = player.loop && sections.find((s) => s.start === player.loop!.start && s.end === player.loop!.end)
   const shapes = [...new Set(analysis.chord_set.map(shape))]
@@ -205,16 +227,27 @@ function Lesson({ songId, initial, onReanalyze }: { songId: string; initial: Ana
       <section className="mx-4 mt-4 overflow-hidden rounded-3xl border border-line bg-surface">
         <div className="p-4">
           <h2 className="mb-3 text-lg font-bold">איך לנגן</h2>
-          <PracticePanel kind={prefs.kind} level={prefs.level} patterns={patterns} pattern={pattern} recommended={recommended}
+          <PracticePanel kind={prefs.kind} level={prefs.level}
+            options={[
+              ...(songVariants.length ? [{ id: SONG_PATTERN, label: '⭐ מותאם לשיר' }] : []),
+              ...library.map((p) => ({ id: p.id, label: p.name })),
+            ]}
+            selectedId={selectedId}
+            rows={useSong
+              ? songVariants.map((p) => ({ title: VARIANT_TITLE[p.variant ?? 'all'], pattern: p, active: p === activePattern }))
+              : [{ pattern: libraryPattern, active: true }]}
+            tip={useSong
+              ? `נבנה מהקצב שהגיטרה והתופים מנגנים בשיר. ${activePattern.tip}${relief ? ' לפני החלפת אקורד מדלגים על המכה למעלה, כדי שיהיה זמן לעבור.' : ''}`
+              : `${libraryPattern.tip}${rhythm ? '' : ' (כדי לקבל פריטה שמותאמת לקצב של השיר הזה, לחץ "נתח מחדש" למטה.)'}`}
             guide={prefs.guide}
             onKind={(kind) => setPrefs({ kind, patternId: null })}
             onLevel={(level) => setPrefs({ level, patternId: null })}
-            onPattern={(patternId) => setPrefs({ patternId })}
+            onSelect={(patternId) => setPrefs({ patternId })}
             onGuide={(guide) => { if (guide) ensureAudio(); setPrefs({ guide }) }} />
         </div>
         <StrumLane hits={hits} beats={beats} chords={chords} shape={shape} getTime={player.getTime}
-          playing={player.playing} audible={prefs.guide}
-          stepsPerSecond={(analysis.bpm / 60) * pattern.subdiv} />
+          playing={player.playing} audible={prefs.guide} feedback={coach.listening ? coach.feedback.current : null}
+          stepsPerSecond={(analysis.bpm / 60) * activePattern.subdiv} />
         <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 py-3 text-xs text-muted">
           {prefs.kind === 'strum' ? (
             <>
@@ -229,6 +262,8 @@ function Lesson({ songId, initial, onReanalyze }: { songId: string; initial: Ana
           )}
         </div>
       </section>
+
+      <CoachPanel coach={coach} shape={shape} waitMode={prefs.waitMode} onWaitMode={(waitMode) => setPrefs({ waitMode })} />
 
       <div className="mt-4">
         <Timeline bars={bars} sections={sections} currentBar={beat?.bar ?? -99} currentBeat={beat?.beat ?? 0}

@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 import type { Beat, ChordSegment } from '../api'
+import type { CoachFeedback } from '../hooks/useCoach'
 import type { Hit } from '../lib/hits'
+import type { Judgment } from '../lib/judge'
 import { tick } from '../lib/sound'
 import { indexAt } from '../lib/timing'
 
@@ -14,9 +16,11 @@ interface Props {
   playing: boolean
   stepsPerSecond: number
   audible: boolean
+  /** Live judgments from the listening coach (mutated in place, read every frame). */
+  feedback: CoachFeedback | null
 }
 
-const HEIGHT = 200
+const HEIGHT = 212
 const STRING_TOP = 44
 const STRING_GAP = 20
 const STRING_NAMES = ['E', 'A', 'D', 'G', 'B', 'e']
@@ -28,10 +32,10 @@ const stringY = (s: number) => STRING_TOP + s * STRING_GAP
  * Strings drawn as seen when looking down at your guitar: low E on top, so a
  * down-strum arrow points down. Notes scroll right-to-left onto the hit line.
  */
-export function StrumLane({ hits, beats, chords, shape, getTime, playing, stepsPerSecond, audible }: Props) {
+export function StrumLane({ hits, beats, chords, shape, getTime, playing, stepsPerSecond, audible, feedback }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const props = useRef({ hits, beats, chords, shape, getTime, playing, stepsPerSecond, audible })
-  props.current = { hits, beats, chords, shape, getTime, playing, stepsPerSecond, audible }
+  const props = useRef({ hits, beats, chords, shape, getTime, playing, stepsPerSecond, audible, feedback })
+  props.current = { hits, beats, chords, shape, getTime, playing, stepsPerSecond, audible, feedback }
 
   useEffect(() => {
     const canvas = canvasRef.current!
@@ -158,11 +162,38 @@ export function StrumLane({ hits, beats, chords, shape, getTime, playing, stepsP
         counts.push({ x, label: h.count, on: Math.abs(h.t - now) < 0.09 })
       }
 
+      // Coach feedback under the strings.
+      const fb = p.feedback
+      if (fb) {
+        ctx.font = 'bold 13px Rubik, sans-serif'
+        ctx.textAlign = 'center'
+        for (let i = Math.max(0, indexAt(p.hits, tStart, (h) => h.t)); i < p.hits.length && p.hits[i].t <= now; i++) {
+          const j = fb.judgments.get(i)
+          if (!j) continue
+          const { color, mark } = judgmentMark(j)
+          const x = xOf(p.hits[i].t)
+          ctx.fillStyle = color
+          if (mark === 'ring') {
+            ctx.strokeStyle = color
+            ctx.lineWidth = 2
+            ctx.beginPath()
+            ctx.arc(x, MARK_Y - 4, 5, 0, Math.PI * 2)
+            ctx.stroke()
+          } else {
+            ctx.fillText(mark, x, MARK_Y)
+          }
+        }
+        ctx.fillStyle = '#8a7a6c'
+        for (const t of fb.extras) {
+          if (t >= tStart && t <= tEnd) ctx.fillText('×', xOf(t), MARK_Y)
+        }
+      }
+
       ctx.font = 'bold 13px Rubik, sans-serif'
       ctx.textAlign = 'center'
       for (const c of counts) {
         ctx.fillStyle = c.on ? COLORS.down : '#a99d92'
-        ctx.fillText(c.label, c.x, HEIGHT - 12)
+        ctx.fillText(c.label, c.x, HEIGHT - 8)
       }
 
       // String names.
@@ -180,7 +211,18 @@ export function StrumLane({ hits, beats, chords, shape, getTime, playing, stepsP
     }
   }, [])
 
-  return <canvas ref={canvasRef} className="block h-[200px] w-full" />
+  return <canvas ref={canvasRef} className="block h-[212px] w-full" />
+}
+
+const MARK_Y = 176
+
+function judgmentMark(j: Judgment): { color: string; mark: string } {
+  if (j.timing === 'miss') return { color: '#f87171', mark: 'ring' }
+  if (j.sound === 'wrong') return { color: '#f87171', mark: '✗' }
+  if (j.timing === 'early') return { color: '#facc15', mark: '‹' }
+  if (j.timing === 'late') return { color: '#facc15', mark: '›' }
+  if (j.dir === 'wrong' || j.sound === 'near') return { color: '#fb923c', mark: '!' }
+  return { color: '#34d399', mark: '✓' }
 }
 
 function drawArrow(ctx: CanvasRenderingContext2D, x: number, yTop: number, yBottom: number,

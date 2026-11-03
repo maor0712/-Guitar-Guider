@@ -12,7 +12,7 @@ from pathlib import Path
 import librosa
 import numpy as np
 
-from . import theory
+from . import rhythm, theory
 
 HOP = 512
 BINS_PER_OCTAVE = 36
@@ -69,9 +69,21 @@ def analyze(
     bpm = float(60.0 / np.median(intervals)) if len(intervals) else 0.0
     counts = Counter(c["label"] for c in chords if c["label"] != "N")
 
+    progress("rhythm", 95)
+    drums_src = librosa.load(stems["drums"], sr=sr, mono=True)[0] if stems else y_perc
+    envs = {"other": rhythm.onset_env(chord_src, sr), "bass": rhythm.onset_env(bass_src, sr),
+            "drums": rhythm.onset_env(drums_src, sr)}
+    rms = librosa.feature.rms(y=y, hop_length=HOP)[0]
+    bar_energy = {}
+    for bar in bars:
+        a, b = librosa.time_to_frames([bar["start"], bar["end"]], sr=sr, hop_length=HOP)
+        bar_energy[bar["index"]] = float(rms[a:max(b, a + 1)].mean()) if a < len(rms) else 0.0
+    song_rhythm = rhythm.song_patterns(envs, sr, beat_times, beats, bars, sections, bar_energy, meter, bpm)
+
     progress("done", 100)
     return {
-        "version": 1,
+        "version": 2,
+        "rhythm": song_rhythm,
         "separated": bool(stems),
         "duration": round(duration, 3),
         "bpm": round(bpm, 1),

@@ -82,6 +82,9 @@ export function usePlayer(src: string, beats: Beat[]) {
     else audio.pause()
   }, [])
 
+  const play = useCallback(() => { void audioRef.current?.play() }, [])
+  const pause = useCallback(() => { audioRef.current?.pause() }, [])
+
   const seek = useCallback((t: number) => {
     const audio = audioRef.current
     if (!audio) return
@@ -111,5 +114,5 @@ export function usePlayer(src: string, beats: Beat[]) {
     setMetronomeState(on)
   }, [])
 
-  return { time, duration, playing, rate, loop, metronome, getTime, toggle, seek, setRate, setLoop, setMetronome }
+  return { time, duration, playing, rate, loop, metronome, getTime, toggle, play, pause, seek, setRate, setLoop, setMetronome }
 }

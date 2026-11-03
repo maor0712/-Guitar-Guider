@@ -1,3 +1,5 @@
+import type { Pattern } from './lib/patterns'
+
 export type SongStatus = 'queued' | 'processing' | 'ready' | 'error'
 
 export interface Key {
@@ -56,10 +58,18 @@ export interface Section {
   progression: string[]
 }
 
+export interface SongRhythm {
+  dynamic: boolean
+  /** Bar index -> which variant of the song patterns applies. */
+  bar_variant: Record<string, 'all' | 'soft' | 'loud'>
+  patterns: Omit<Pattern, 'name'>[]
+}
+
 export interface Analysis {
   version: number
   separated?: boolean
   edited?: boolean
+  rhythm?: SongRhythm | null
   duration: number
   bpm: number
   meter: number

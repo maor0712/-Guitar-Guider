@@ -9,16 +9,23 @@ const LEVELS: { value: Level; label: string }[] = [
 
 const PICK_TOKEN: Record<string, string> = { B: 'בס', A: 'בס 2' }
 
+export interface PatternRow {
+  title?: string
+  pattern: Pattern
+  active: boolean
+}
+
 interface Props {
   kind: PatternKind
   level: Level
-  patterns: Pattern[]
-  pattern: Pattern
-  recommended: Pattern
+  options: { id: string; label: string }[]
+  selectedId: string
+  rows: PatternRow[]
+  tip: string
   guide: boolean
   onKind: (kind: PatternKind) => void
   onLevel: (level: Level) => void
-  onPattern: (id: string) => void
+  onSelect: (id: string) => void
   onGuide: (on: boolean) => void
 }
 
@@ -35,38 +42,55 @@ export function PracticePanel(p: Props) {
       </div>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
-        {p.patterns.map((pt) => (
-          <button key={pt.id} onClick={() => p.onPattern(pt.id)}
-            className={`rounded-full px-3 py-1.5 text-sm ${pt.id === p.pattern.id ? 'bg-ink font-bold text-bg' : 'bg-surface-2'}`}>
-            {pt.id === p.recommended.id && '⭐ '}{pt.name}
+        {p.options.map((o) => (
+          <button key={o.id} onClick={() => p.onSelect(o.id)}
+            className={`rounded-full px-3 py-1.5 text-sm ${o.id === p.selectedId ? 'bg-ink font-bold text-bg' : 'bg-surface-2'}`}>
+            {o.label}
           </button>
         ))}
       </div>
 
-      <div className="mt-3 flex gap-1" dir="ltr">
-        {p.pattern.steps.map((step, i) => (
-          <div key={i} className="flex flex-1 flex-col items-center gap-1">
-            <div className={`flex h-10 w-full items-center justify-center rounded-lg text-lg font-bold ${
-              step === '-' ? 'bg-surface-2/50 text-muted' : step === 'U' ? 'bg-sky-400/20 text-sky-300' : 'bg-accent-soft text-accent'
-            }`}>
-              <StepGlyph step={step} />
-            </div>
-            <span className={`text-xs ${i % p.pattern.subdiv === 0 ? 'font-bold text-ink' : 'text-muted'}`}>
-              {countLabel(i, p.pattern.subdiv)}
-            </span>
+      <div className="mt-3 space-y-3">
+        {p.rows.map((row) => (
+          <div key={row.title ?? 'only'} className={row.active || p.rows.length === 1 ? '' : 'opacity-50'}>
+            {row.title && (
+              <div className="mb-1 text-xs font-bold text-muted">
+                {row.title}{row.active && p.rows.length > 1 && <span className="text-accent"> · עכשיו</span>}
+              </div>
+            )}
+            <PatternSteps pattern={row.pattern} />
           </div>
         ))}
       </div>
 
-      <p className="mt-3 text-sm text-muted">
-        {p.pattern.id === p.recommended.id && <b className="text-accent">המלצת המורה לשיר הזה. </b>}
-        {p.pattern.tip}
-      </p>
+      <p className="mt-3 text-sm text-muted">{p.tip}</p>
 
       <label className="mt-3 inline-flex cursor-pointer items-center gap-2 text-sm">
         <input type="checkbox" checked={p.guide} onChange={(e) => p.onGuide(e.target.checked)} className="size-4 accent-[var(--color-accent)]" />
         השמע תקתוק על כל פריטה
       </label>
+    </div>
+  )
+}
+
+function PatternSteps({ pattern }: { pattern: Pattern }) {
+  const accents = pattern.accents ?? [0]
+  return (
+    <div className="flex gap-0.5" dir="ltr">
+      {pattern.steps.map((step, i) => (
+        <div key={i} className={`flex min-w-0 flex-1 flex-col items-center gap-1 ${i % pattern.subdiv === 0 && i > 0 ? 'ms-1' : ''}`}>
+          <div className={`flex h-10 w-full items-center justify-center rounded-md font-bold ${
+            pattern.subdiv > 2 ? 'text-base' : 'text-lg'
+          } ${
+            step === '-' ? 'bg-surface-2/50 text-muted' : step === 'U' ? 'bg-sky-400/20 text-sky-300' : 'bg-accent-soft text-accent'
+          } ${accents.includes(i) && step !== '-' ? 'ring-2 ring-accent' : ''}`}>
+            <StepGlyph step={step} />
+          </div>
+          <span className={`text-xs ${i % pattern.subdiv === 0 ? 'font-bold text-ink' : 'text-muted'}`}>
+            {countLabel(i, pattern.subdiv)}
+          </span>
+        </div>
+      ))}
     </div>
   )
 }
