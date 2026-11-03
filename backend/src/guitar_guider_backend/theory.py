@@ -14,8 +14,10 @@ MINOR_PROFILE = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 
 QUALITIES = {
     "": ([0, 4, 7], [1.0, 1.0, 1.0], 0.0),
     "m": ([0, 3, 7], [1.0, 1.0, 1.0], 0.0),
-    "7": ([0, 4, 7, 10], [1.0, 1.0, 1.0, 0.75], 0.04),
-    "m7": ([0, 3, 7, 10], [1.0, 1.0, 1.0, 0.75], 0.04),
+    "7": ([0, 4, 7, 10], [1.0, 1.0, 1.0, 0.75], 0.08),
+    "m7": ([0, 3, 7, 10], [1.0, 1.0, 1.0, 0.75], 0.08),
+    # Without maj7, colourful chords like Fmaj7/Fmaj9 get mistaken for G or G7.
+    "maj7": ([0, 4, 7, 11], [1.0, 1.0, 1.0, 0.75], 0.08),
 }
 
 # Major keys (by tonic pitch class) conventionally spelled with flats; minor keys use their relative major.
@@ -25,6 +27,15 @@ FLAT_MAJOR_KEYS = {5, 10, 3, 8, 1, 6}  # F Bb Eb Ab Db Gb
 def uses_flats(tonic: int, mode: str) -> bool:
     major_tonic = tonic if mode == "major" else (tonic + 3) % 12
     return major_tonic in FLAT_MAJOR_KEYS
+
+
+def parse_label(label: str) -> tuple[int, str] | None:
+    """'F#m7' -> (6, 'm7'). Returns None for unknown roots or qualities."""
+    root = label[:2] if len(label) > 1 and label[1] in "#b" else label[:1]
+    names = SHARP_NAMES if "#" in root else FLAT_NAMES
+    if root not in names or label[len(root):] not in QUALITIES:
+        return None
+    return names.index(root), label[len(root):]
 
 
 def note_name(pc: int, flats: bool) -> str:

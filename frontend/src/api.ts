@@ -58,6 +58,8 @@ export interface Section {
 
 export interface Analysis {
   version: number
+  separated?: boolean
+  edited?: boolean
   duration: number
   bpm: number
   meter: number
@@ -103,6 +105,12 @@ export const api = {
     form.append('file', file)
     return request<SongMeta>('/api/songs/upload', { method: 'POST', body: form })
   },
+  editChord: (id: string, index: number, label: string, scope: 'one' | 'all') =>
+    request<Analysis>(`/api/songs/${id}/chords`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ index, label, scope }),
+    }),
   reanalyze: (id: string) => request<SongMeta>(`/api/songs/${id}/reanalyze`, { method: 'POST' }),
   deleteSong: (id: string) => request<{ ok: boolean }>(`/api/songs/${id}`, { method: 'DELETE' }),
   audioUrl: (id: string) => `/api/songs/${id}/audio`,

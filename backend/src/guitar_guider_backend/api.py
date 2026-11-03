@@ -3,6 +3,7 @@
 import hashlib
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -10,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import audio_io, jobs, storage
+from .analysis import relabel
 
 FRONTEND_DIST = storage.BACKEND_DIR.parent / "frontend" / "dist"
 ALLOWED_UPLOADS = {".mp3", ".m4a", ".wav", ".flac", ".ogg", ".opus", ".webm", ".aac", ".mp4"}
@@ -85,6 +87,27 @@ def get_audio(song_id: str):
     if not path.exists():
         raise HTTPException(404, "האודיו עדיין לא מוכן")
     return FileResponse(path, media_type="audio/mpeg")
+
+
+class ChordEdit(BaseModel):
+    index: int
+    label: str
+    scope: Literal["one", "all"] = "one"
+
+
+@app.post("/api/songs/{song_id}/chords")
+def edit_chord(song_id: str, edit: ChordEdit):
+    _require(song_id)
+    current = storage.read_analysis(song_id)
+    if not current:
+        raise HTTPException(409, "השיר עדיין לא נותח")
+    try:
+        updated = relabel(current, edit.index, edit.label, edit.scope)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    storage.write_analysis(song_id, updated)
+    storage.update_meta(song_id, chord_set=updated["chord_set"][:8])
+    return updated
 
 
 @app.post("/api/songs/{song_id}/reanalyze")

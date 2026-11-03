@@ -14,10 +14,11 @@ interface Props {
   currentBar: number
   currentBeat: number
   onSeek: (t: number) => void
+  shape: (label: string) => string
 }
 
 /** Horizontally scrolling bar grid that follows playback. */
-export const Timeline = memo(function Timeline({ bars, sections, currentBar, currentBeat, onSeek }: Props) {
+export const Timeline = memo(function Timeline({ bars, sections, currentBar, currentBeat, onSeek, shape }: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const barRefs = useRef(new Map<number, HTMLButtonElement>())
 
@@ -60,7 +61,7 @@ export const Timeline = memo(function Timeline({ bars, sections, currentBar, cur
                 return (
                   <span key={i} className="relative flex w-[26px] flex-col items-start justify-between py-2 ps-1">
                     <span className={`whitespace-nowrap text-sm font-bold ${chord === 'N' ? 'text-muted' : 'text-ink'}`}>
-                      {changed ? (chord === 'N' ? '–' : chord) : ''}
+                      {changed ? (chord === 'N' ? '–' : shape(chord)) : ''}
                     </span>
                     <span className={`h-1.5 w-3 rounded-full ${beatOn ? 'bg-accent' : 'bg-line'}`} />
                   </span>

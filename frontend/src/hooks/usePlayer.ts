@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Beat } from '../api'
+import { ensureAudio, tick } from '../lib/sound'
 import { indexAt } from '../lib/timing'
 
 export interface LoopRange {
@@ -10,7 +11,6 @@ export interface LoopRange {
 /** Audio playback with slow-down (pitch preserved), A-B looping and a beat-synced click. */
 export function usePlayer(src: string, beats: Beat[]) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const clickCtx = useRef<AudioContext | null>(null)
   const lastBeat = useRef(-1)
   const loopRef = useRef<LoopRange | null>(null)
   const metronomeRef = useRef(false)
@@ -45,18 +45,10 @@ export function usePlayer(src: string, beats: Beat[]) {
     }
   }, [src])
 
-  const click = useCallback((accent: boolean) => {
-    const ctx = clickCtx.current
-    if (!ctx) return
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.frequency.value = accent ? 1600 : 1000
-    gain.gain.setValueAtTime(accent ? 0.5 : 0.3, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05)
-    osc.connect(gain).connect(ctx.destination)
-    osc.start()
-    osc.stop(ctx.currentTime + 0.06)
-  }, [])
+  const click = useCallback((accent: boolean) => tick(accent ? 1600 : 1000, accent ? 0.5 : 0.3), [])
+
+  /** Current playback position, read straight from the audio element (for per-frame animation). */
+  const getTime = useCallback(() => audioRef.current?.currentTime ?? 0, [])
 
   useEffect(() => {
     if (!playing) return
@@ -114,10 +106,10 @@ export function usePlayer(src: string, beats: Beat[]) {
   )
 
   const setMetronome = useCallback((on: boolean) => {
-    if (on && !clickCtx.current) clickCtx.current = new AudioContext()
+    if (on) ensureAudio()
     metronomeRef.current = on
     setMetronomeState(on)
   }, [])
 
-  return { time, duration, playing, rate, loop, metronome, toggle, seek, setRate, setLoop, setMetronome }
+  return { time, duration, playing, rate, loop, metronome, getTime, toggle, seek, setRate, setLoop, setMetronome }
 }

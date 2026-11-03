@@ -36,6 +36,12 @@ const OPEN: Record<string, Omit<Voicing, 'difficulty'> & { difficulty?: Voicing[
   '9:7': { frets: [x, 0, 2, 0, 2, 0], fingers: [0, 0, 2, 0, 3, 0] },
   '9:m7': { frets: [x, 0, 2, 0, 1, 0], fingers: [0, 0, 2, 0, 1, 0] },
   '11:7': { frets: [x, 2, 1, 2, 0, 2], fingers: [0, 2, 1, 3, 0, 4], difficulty: 'medium' },
+  '0:maj7': { frets: [x, 3, 2, 0, 0, 0], fingers: [0, 3, 2, 0, 0, 0] },
+  '2:maj7': { frets: [x, x, 0, 2, 2, 2], fingers: [0, 0, 0, 1, 1, 1] },
+  '4:maj7': { frets: [0, 2, 1, 1, 0, 0], fingers: [0, 3, 1, 2, 0, 0] },
+  '5:maj7': { frets: [x, x, 3, 2, 1, 0], fingers: [0, 0, 3, 2, 1, 0] },
+  '7:maj7': { frets: [3, 2, 0, 0, 0, 2], fingers: [3, 2, 0, 0, 0, 1] },
+  '9:maj7': { frets: [x, 0, 2, 1, 2, 0], fingers: [0, 0, 2, 1, 3, 0] },
 }
 
 // Movable barre shapes as fret offsets from the barre fret.
@@ -44,12 +50,14 @@ const E_SHAPE: Record<string, { offsets: number[]; fingers: number[] }> = {
   m: { offsets: [0, 2, 2, 0, 0, 0], fingers: [1, 3, 4, 1, 1, 1] },
   '7': { offsets: [0, 2, 0, 1, 0, 0], fingers: [1, 3, 1, 2, 1, 1] },
   m7: { offsets: [0, 2, 0, 0, 0, 0], fingers: [1, 3, 1, 1, 1, 1] },
+  maj7: { offsets: [0, 2, 1, 1, 0, 0], fingers: [1, 4, 2, 3, 1, 1] },
 }
 const A_SHAPE: Record<string, { offsets: number[]; fingers: number[] }> = {
   '': { offsets: [0, 2, 2, 2, 0], fingers: [1, 2, 3, 4, 1] },
   m: { offsets: [0, 2, 2, 1, 0], fingers: [1, 3, 4, 2, 1] },
   '7': { offsets: [0, 2, 0, 2, 0], fingers: [1, 3, 1, 4, 1] },
   m7: { offsets: [0, 2, 0, 1, 0], fingers: [1, 3, 1, 2, 1] },
+  maj7: { offsets: [0, 2, 1, 2, 0], fingers: [1, 3, 2, 4, 1] },
 }
 
 export function parseChord(label: string): { pc: number; quality: string } | null {

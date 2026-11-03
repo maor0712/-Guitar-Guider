@@ -25,7 +25,7 @@ BASS_WEIGHT = 0.15
 KEY_BONUS = 0.06
 NO_CHORD_SIM = 0.55
 PHRASE_BARS = 4
-SECTION_SIMILARITY = 0.75
+SECTION_SIMILARITY = 0.6
 
 ProgressFn = Callable[[str, int], None]
 
@@ -84,6 +84,46 @@ def analyze(
         "sections": sections,
         "chord_set": [label for label, _ in counts.most_common()],
     }
+
+
+def relabel(analysis: dict, index: int, label: str, scope: str = "one") -> dict:
+    """Manually correct a chord segment (or every segment with the same label)
+    and rebuild everything derived from the chords."""
+    chords = analysis["chords"]
+    if not 0 <= index < len(chords):
+        raise ValueError("אינדקס אקורד לא תקין")
+    parsed = None if label == "N" else theory.parse_label(label)
+    if label != "N" and parsed is None:
+        raise ValueError(f"אקורד לא מוכר: {label}")
+
+    old = chords[index]["label"]
+    targets = [i for i, c in enumerate(chords) if c["label"] == old] if scope == "all" else [index]
+    for i in targets:
+        chords[i].update(label=label, confidence=1.0,
+                         root=label[: len(label) - len(parsed[1])] if parsed else None,
+                         quality=parsed[1] if parsed else None)
+
+    merged = []
+    for chord in chords:
+        if merged and merged[-1]["label"] == chord["label"]:
+            merged[-1]["end"] = chord["end"]
+        else:
+            merged.append(dict(chord))
+    analysis["chords"] = merged
+
+    starts = [c["start"] for c in merged]
+    for bar in analysis["bars"]:
+        bar["chords"] = []
+    bars = {b["index"]: b for b in analysis["bars"]}
+    for beat in analysis["beats"]:
+        i = max(0, int(np.searchsorted(starts, beat["t"] + 1e-6)) - 1)
+        bars[beat["bar"]]["chords"].append(merged[i]["label"])
+
+    analysis["sections"] = _find_sections(analysis["bars"])
+    counts = Counter(c["label"] for c in merged if c["label"] != "N")
+    analysis["chord_set"] = [lbl for lbl, _ in counts.most_common()]
+    analysis["edited"] = True
+    return analysis
 
 
 def _track_beats(y_perc: np.ndarray, sr: int, duration: float) -> tuple[np.ndarray, np.ndarray]:
@@ -255,6 +295,14 @@ def _chord_segments(beat_times, duration, states, confidence, vocab, flats):
     return segments
 
 
+def _triad(label: str) -> str:
+    """Reduce sevenths to their triad so 'G' and 'G7' count as the same chord."""
+    for suffix, base in (("maj7", ""), ("m7", "m"), ("7", "")):
+        if label.endswith(suffix):
+            return label[: -len(suffix)] + base
+    return label
+
+
 def _find_sections(bars):
     """Group bars into phrases and label phrases with the same progression alike (A, B, ...)."""
     full = [b for b in bars if b["index"] >= 0]
@@ -262,16 +310,15 @@ def _find_sections(bars):
     known: list[tuple[str, list[str]]] = []
     labelled = []
     for phrase in phrases:
-        flat = [c for bar in phrase for c in bar["chords"]]
+        flat = [_triad(c) for bar in phrase for c in bar["chords"]]
         if all(c == "N" for c in flat):
             labelled.append(("-", phrase))
             continue
-        label = None
+        label, best = None, SECTION_SIMILARITY
         for name, ref in known:
-            n = min(len(ref), len(flat))
-            if n and sum(a == b for a, b in zip(ref, flat)) / max(len(ref), len(flat)) >= SECTION_SIMILARITY:
-                label = name
-                break
+            sim = sum(a == b for a, b in zip(ref, flat)) / max(len(ref), len(flat))
+            if sim >= best:
+                label, best = name, sim
         if label is None:
             label = chr(ord("A") + len(known)) if len(known) < 26 else "?"
             known.append((label, flat))
